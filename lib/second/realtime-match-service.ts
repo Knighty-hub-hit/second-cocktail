@@ -27,10 +27,12 @@ export class RealtimeMatchService {
     if (!this.socket) this.connect();
     await this.emit("queue.join", { signals: {} });
   }
-  async restore() {
-    const response = await fetch("/api/match-state", { credentials: "same-origin" });
+  joinExistingSession() { return this.emit("queue.join", { signals: {} }); }
+  async restore(signal?: AbortSignal) {
+    const response = await fetch("/api/match-state", { credentials: "same-origin", cache: "no-store", signal });
     if (!response.ok) return null;
     const body = await response.json() as { state?: CanonicalMatchState };
+    if (signal?.aborted) return null;
     if (body.state) this.publish(body.state);
     if (!this.socket) this.connect();
     return body.state ?? null;
@@ -44,6 +46,12 @@ export class RealtimeMatchService {
   continueConnection() { return this.emit("connection.continue"); }
   finishConnection() { return this.emit("connection.finish"); }
   leave() { return this.emit("match.leave"); }
+  async dismissEndedMatch(pairId: string) {
+    const response = await fetch("/api/dismiss-ended-match", { method: "POST", headers: { "content-type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ pairId }) });
+    if (!response.ok) throw new Error("Unable to dismiss the ended match");
+    const body = await response.json() as { state?: CanonicalMatchState };
+    return body.state ?? { stage: "idle", serverNow: new Date().toISOString() };
+  }
   async endTonight() { await fetch("/api/end-tonight", { method: "POST", credentials: "same-origin" }); this.socket?.disconnect(); }
   async report(reason: "unsafe" | "harassment" | "impersonation" | "other") { await fetch("/api/report", { method: "POST", headers: { "content-type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ reason }) }); }
   disconnect() { this.socket?.disconnect(); this.socket = null; }

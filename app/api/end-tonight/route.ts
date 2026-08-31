@@ -1,13 +1,17 @@
 import { NextResponse } from "next/server";
 import { endConnection, leaveMatch } from "@/server/realtime/matchmaker";
-import { getSessionByToken, invalidateSession, parseCookie, tonightCookieName } from "@/server/realtime/session";
+import { getSessionForRequest, invalidateSession, tonightCookieName } from "@/server/realtime/session";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   try {
-    const session = await getSessionByToken(parseCookie(request.headers.get("cookie") ?? undefined));
-    if (!session) return NextResponse.json({ ok: false, error: "Authentication required" }, { status: 401 });
+    const session = await getSessionForRequest(request);
+    if (!session) {
+      const response = NextResponse.json({ ok: false, error: "Authentication required" }, { status: 401 });
+      response.cookies.set(tonightCookieName, "", { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", path: "/", maxAge: 0 });
+      return response;
+    }
     await endConnection(session.id, "end_tonight");
     await leaveMatch(session.id);
     await invalidateSession(session.id);
